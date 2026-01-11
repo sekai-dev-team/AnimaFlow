@@ -399,7 +399,7 @@ async function init() {
 
 function applyParallax(viewer) {
     const p = MODEL_CONFIG.parallaxPower;
-
+    
     // 缓动计算
     state.camX += (state.mouseX - state.camX) * 0.08;
     state.camY += (state.mouseY - state.camY) * 0.08;
@@ -411,36 +411,39 @@ function applyParallax(viewer) {
     const viewVector = new THREE.Vector3().subVectors(basePos, target);
     const distance = viewVector.length();
 
-    // 2. 物理位移幅度 (Physical Shift)
-    // 回归理性：0.25 倍视距。
-    // 就像人的双眼视差一样，不需要移动几米，只需要几厘米就能产生强烈的立体感。
-    const maxOffset = distance * 1.5 * p;
+    // 2. 像素级物理锁定 (Pixel-Perfect Lock)
+    // 利用 FOV 计算在目标距离处，屏幕究竟有多宽/多高
+    // 这样能保证鼠标移动的比例与物体移动的比例是 1:1 的 (当 Power=1.0 时)
+    const vFOV = THREE.MathUtils.degToRad(viewer.camera.fov);
+    const visibleHeight = 2 * Math.tan(vFOV / 2) * distance;
+    const visibleWidth = visibleHeight * viewer.camera.aspect;
 
-    // 3. 局部坐标轴
+    // 3. 计算精确位移
+    // state.camX 通常范围是 -1 到 1 (屏幕左边缘到右边缘)
+    // 我们将其映射到物理宽度的一半，实现"指哪打哪"的跟手感
+    const offsetX = -state.camX * (visibleWidth / 2) * p;
+    const offsetY = -state.camY * (visibleHeight / 2) * p;
+
+    // 4. 局部坐标轴
     const forward = viewVector.clone().normalize();
     const worldUp = new THREE.Vector3(0, 1, 0);
     if (Math.abs(forward.y) > 0.99) worldUp.set(0, 0, 1);
-
+    
     const right = new THREE.Vector3().crossVectors(worldUp, forward).normalize();
     const up = new THREE.Vector3().crossVectors(forward, right).normalize();
 
-    // 4. 计算相机位移 (Camera Offset)
-    // 保持"拉扯/反向"逻辑：Mouse Right -> Cam Left
+    // 5. 应用位移
     const camOffset = new THREE.Vector3()
-        .addScaledVector(right, -state.camX * maxOffset)
-        .addScaledVector(up, -state.camY * maxOffset);
+        .addScaledVector(right, offsetX)
+        .addScaledVector(up, offsetY);
 
-    // 5. 关键：纯平移 (Pure Strafe)
-    // 让注视点(Target)完全跟随相机移动。
-    // 这意味着相机在移动过程中，旋转角度保持不变（不转头）。
-    // 结果：纯粹的透视位移。前景跑得快，背景跑得慢。视差最大化。
+    // 6. 纯平移 (Target 跟随)
     const dynamicTarget = target.clone().add(camOffset);
 
-    // 6. 应用更新
     viewer.camera.position.copy(basePos).add(camOffset);
     viewer.camera.lookAt(dynamicTarget);
 
-    if (viewer.splatMesh) {
+    if(viewer.splatMesh) {
         viewer.splatMesh.rotation.set(MODEL_CONFIG.modelRotation.x, MODEL_CONFIG.modelRotation.y, MODEL_CONFIG.modelRotation.z);
     }
 
