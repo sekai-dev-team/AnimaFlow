@@ -27,7 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY sharp/requirements.txt /tmp/sharp_requirements.txt
 
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir fastapi "uvicorn[standard]" python-multipart sqlalchemy jinja2 aiofiles
+    pip install --no-cache-dir fastapi "uvicorn[standard]" python-multipart sqlalchemy jinja2 aiofiles requests python-dotenv
 
 RUN if [ "$INSTALL_ML" = "true" ]; then \
         echo "Installing ML dependencies..." && \
