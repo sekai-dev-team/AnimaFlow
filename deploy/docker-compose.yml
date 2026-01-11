@@ -1,0 +1,22 @@
+services:
+  animaflow:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: animaflow:latest
+    container_name: animaflow
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./data/animaflow/model:/app/sharp/data/model
+      - ./data/animaflow/ply:/app/data/generated
+      - ./data/animaflow/2d-imgs:/app/data/uploads
+      - ./data/animaflow/db:/app/data/db
+    restart: unless-stopped
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]

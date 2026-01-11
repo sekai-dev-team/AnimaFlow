@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+
+{% block title %}AnimaFlow 控制台{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8 max-w-6xl">
+    <!-- Header -->
+    <header class="flex justify-between items-center mb-12">
+        <h1 class="text-3xl font-light tracking-wider text-white">
+            Anima<span class="font-bold text-blue-400">Flow</span>
+        </h1>
+        <div class="glass px-4 py-2 rounded-full flex items-center gap-3">
+            <span class="text-sm text-gray-400">用户:</span>
+            <input type="text" id="username-input" class="bg-transparent border-none outline-none text-white text-sm w-24 placeholder-gray-600" placeholder="User" value="guest">
+            <i class="fas fa-user-circle text-gray-400"></i>
+        </div>
+    </header>
+
+    <!-- Upload Section -->
+    <section class="mb-16">
+        <div id="drop-zone" class="glass rounded-2xl p-10 border-2 border-dashed border-gray-700 hover:border-blue-500 transition-all cursor-pointer flex flex-col items-center justify-center text-center group relative overflow-hidden">
+            <input type="file" id="file-input" class="hidden" accept="image/*,.ply">
+            
+            <div class="z-10 flex flex-col items-center">
+                <div class="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                    <i class="fas fa-cloud-upload-alt text-2xl text-blue-400"></i>
+                </div>
+                <h3 class="text-xl font-medium mb-2 text-gray-200">上传记忆</h3>
+                <p class="text-sm text-gray-500">拖拽 2D 图片或 .ply 文件到这里，或点击浏览</p>
+                <p class="text-xs text-gray-600 mt-4">支持 JPG, PNG, WEBP, PLY</p>
+            </div>
+
+            <!-- Progress Overlay -->
+            <div id="upload-progress" class="absolute inset-0 bg-gray-900 bg-opacity-90 flex flex-col items-center justify-center hidden z-20">
+                <div class="w-64 h-1 bg-gray-800 rounded-full overflow-hidden mb-4">
+                    <div id="progress-bar" class="h-full bg-blue-500 w-0 transition-all duration-300"></div>
+                </div>
+                <p class="text-blue-400 text-sm animate-pulse">正在编织梦境...</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Gallery Section -->
+    <section>
+        <div class="flex justify-between items-end mb-6">
+            <h2 class="text-xl font-light text-gray-300">画廊</h2>
+            <button onclick="fetchWallpapers()" class="text-xs text-gray-500 hover:text-white transition-colors">
+                <i class="fas fa-sync-alt"></i> 刷新
+            </button>
+        </div>
+        
+        <div id="gallery-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <!-- Items will be injected here -->
+            <div class="col-span-full text-center py-20 text-gray-600">
+                正在加载记忆...
+            </div>
+        </div>
+    </section>
+</div>
+
+<!-- Scripts -->
+<script>
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const uploadProgress = document.getElementById('upload-progress');
+    const progressBar = document.getElementById('progress-bar');
+    const galleryGrid = document.getElementById('gallery-grid');
+    const usernameInput = document.getElementById('username-input');
+
+    // Persist Username
+    if (localStorage.getItem('animaflow_user')) {
+        usernameInput.value = localStorage.getItem('animaflow_user');
+    }
+    usernameInput.addEventListener('change', (e) => {
+        localStorage.setItem('animaflow_user', e.target.value);
+    });
+
+    // Upload Logic
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('border-blue-500', 'bg-gray-800');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('border-blue-500', 'bg-gray-800');
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('border-blue-500', 'bg-gray-800');
+        if (e.dataTransfer.files.length) {
+            handleUpload(e.dataTransfer.files[0]);
+        }
+    });
+
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length) {
+            handleUpload(e.target.files[0]);
+        }
+    });
+
+    async function handleUpload(file) {
+        // Allow image types and .ply
+        if (!file.type.startsWith('image/') && !file.name.toLowerCase().endsWith('.ply')) {
+            alert('请上传图片或 .ply 文件。');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        uploadProgress.classList.remove('hidden');
+        progressBar.style.width = '30%';
+
+        try {
+            const response = await fetch('/api/upload/', {
+                method: 'POST',
+                body: formData
+            });
+
+            progressBar.style.width = '70%';
+
+            if (!response.ok) throw new Error('上传失败');
+
+            const data = await response.json();
+            progressBar.style.width = '100%';
+            
+            setTimeout(() => {
+                uploadProgress.classList.add('hidden');
+                progressBar.style.width = '0';
+                fetchWallpapers(); // Refresh gallery
+            }, 500);
+
+        } catch (error) {
+            console.error(error);
+            alert('上传失败: ' + error.message);
+            uploadProgress.classList.add('hidden');
+        }
+    }
+
+    // Gallery Logic
+    async function fetchWallpapers() {
+        try {
+            const response = await fetch('/api/upload/');
+            const wallpapers = await response.json();
+            renderGallery(wallpapers);
+        } catch (error) {
+            console.error('Failed to fetch wallpapers:', error);
+            galleryGrid.innerHTML = '<div class="col-span-full text-center text-red-500">无法加载画廊。</div>';
+        }
+    }
+
+    function renderGallery(wallpapers) {
+        if (wallpapers.length === 0) {
+            galleryGrid.innerHTML = '<div class="col-span-full text-center py-20 text-gray-600">暂无记忆。请上传一个吧。</div>';
+            return;
+        }
+
+        galleryGrid.innerHTML = wallpapers.map(wp => {
+            const isProcessing = !wp.ply_path;
+            const currentUser = usernameInput.value || 'guest';
+            
+            const rawImgUrl = wp.upload_path.replace(/\\/g, '/');
+            const imgUrl = rawImgUrl.startsWith('data/') ? rawImgUrl.replace(/^data\//, '/media/') : rawImgUrl;
+
+            // Simple placeholder for PLY files if they don't have a thumbnail logic yet
+            const isPlySource = wp.filename.toLowerCase().endsWith('.ply');
+            const displayImg = isPlySource ? '/static/viewer/placeholder_cube.png' : imgUrl; 
+            // Note: user might need a placeholder image for .ply uploads if not generating thumbnails.
+            // For now we use the imgUrl (which is the ply itself?? No, upload_path is the file). 
+            // If upload is ply, browser can't render it as img. 
+            // Let's handle this gracefully:
+            
+            let thumbnailHtml = '';
+            if (isPlySource) {
+                 thumbnailHtml = `<div class="w-full h-64 bg-gray-800 flex items-center justify-center text-gray-500"><i class="fas fa-cube text-4xl"></i></div>`;
+            } else {
+                 thumbnailHtml = `<img src="${imgUrl}" alt="${wp.filename}" class="object-cover w-full h-64 opacity-80 group-hover:opacity-100 transition-opacity">`;
+            }
+
+            return `
+                <div class="glass rounded-xl overflow-hidden group relative transition-all hover:scale-[1.02]">
+                    <div class="aspect-w-16 aspect-h-9 bg-gray-900 relative">
+                        ${thumbnailHtml}
+                        
+                        ${isProcessing ? `
+                            <div class="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
+                                <span class="text-blue-400 text-sm animate-pulse"><i class="fas fa-spinner fa-spin mr-2"></i> 正在生成 3D...</span>
+                            </div>
+                        ` : ''}
+                    </div>
+                    
+                    <div class="p-4">
+                        <h3 class="text-sm font-medium text-gray-300 truncate" title="${wp.filename}">${wp.filename}</h3>
+                        <p class="text-xs text-gray-500 mt-1">${new Date(wp.created_at).toLocaleDateString()}</p>
+                    </div>
+
+                    <!-- Actions Overlay -->
+                    ${!isProcessing ? `
+                        <div class="absolute inset-0 bg-black bg-opacity-80 flex items-center justify-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm">
+                            <a href="/viewer/?id=${wp.id}&user=${currentUser}" target="_blank" class="px-4 py-2 bg-white text-black rounded-full text-sm font-medium hover:bg-gray-200 transition-colors flex items-center gap-2">
+                                <i class="fas fa-play"></i> 预览
+                            </a>
+                            <a href="/viewer/?id=${wp.id}&user=${currentUser}&mode=director" target="_blank" class="px-4 py-2 border border-white/20 text-white rounded-full text-sm font-medium hover:bg-white/10 transition-colors flex items-center gap-2">
+                                <i class="fas fa-video"></i> 导演模式
+                            </a>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }).join('');
+    }
+
+    fetchWallpapers();
+</script>
+{% endblock %}

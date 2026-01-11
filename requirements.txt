@@ -1,0 +1,9 @@
+--requirement-file for top-level: include sharp deps and app deps
+-r sharp/requirements.txt
+fastapi
+uvicorn[standard]
+python-multipart
+sqlalchemy
+jinja2
+aiofiles
+python-dotenv
