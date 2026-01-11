@@ -17,7 +17,7 @@ const MODEL_CONFIG = {
     cameraTarget: { x: 0, y: 0, z: 0 },
     modelRotation: { x: 0, y: 0, z: 0 },
     modelScale: 1.0,
-    cameraFOV: 45,          
+    cameraFOV: 45,
     parallaxPower: 2.0,
     focusAperture: 0.85     // Default vignette opacity
 };
@@ -33,7 +33,7 @@ const state = {
 
 async function getPlyPath() {
     if (!wpId) return './scene.ply'; // Fallback
-    
+
     try {
         const response = await fetch(`/api/upload/${wpId}`);
         if (!response.ok) throw new Error("Metadata fetch failed");
@@ -62,11 +62,11 @@ async function loadConfig() {
         if (response.ok) {
             const data = await response.json();
             console.log("[AnimaFlow] Loaded Saved Config:", data);
-            
+
             if (data.fov) {
                 MODEL_CONFIG.cameraFOV = data.fov;
             }
-            
+
             if (data.cam_matrix) {
                 try {
                     const parsed = JSON.parse(data.cam_matrix);
@@ -80,6 +80,9 @@ async function loadConfig() {
                     }
                     if (parsed.focusAperture !== undefined) {
                         MODEL_CONFIG.focusAperture = parsed.focusAperture;
+                    }
+                    if (parsed.modelRotation) {
+                        MODEL_CONFIG.modelRotation = parsed.modelRotation;
                     }
                     console.log("[AnimaFlow] Restored Camera & Effects Config");
                 } catch (err) {
@@ -120,6 +123,8 @@ async function init() {
         'initialCameraLookAt': [MODEL_CONFIG.cameraTarget.x, MODEL_CONFIG.cameraTarget.y, MODEL_CONFIG.cameraTarget.z],
         'selfDrivenMode': false,
         'useBuiltInControls': SETUP_MODE, // Enable orbit controls in Director Mode
+        'dynamicScene': true, // 💎 关键修复：告诉 Viewer 模型本身会动，强制每帧重排 Splat，防止画面破碎
+        'antialiased': true,  // 💎 画质提升：开启抗锯齿
         'camera': new THREE.PerspectiveCamera(MODEL_CONFIG.cameraFOV, window.innerWidth / window.innerHeight, 0.1, 2000)
     });
 
@@ -142,10 +147,17 @@ async function init() {
         // 强制刷新一次位置 (无论什么模式都执行)
         viewer.camera.position.set(MODEL_CONFIG.cameraPos.x, MODEL_CONFIG.cameraPos.y, MODEL_CONFIG.cameraPos.z);
         viewer.camera.lookAt(new THREE.Vector3(MODEL_CONFIG.cameraTarget.x, MODEL_CONFIG.cameraTarget.y, MODEL_CONFIG.cameraTarget.z));
-        
+
         // 如果是导演模式，需要更新 OrbitControls 的目标点，否则它会以 (0,0,0) 为中心旋转
         if (SETUP_MODE && viewer.controls) {
             viewer.controls.target.set(MODEL_CONFIG.cameraTarget.x, MODEL_CONFIG.cameraTarget.y, MODEL_CONFIG.cameraTarget.z);
+
+            // 🔓 解锁相机旋转限制 (允许无死角查看)
+            viewer.controls.minPolarAngle = 0;
+            viewer.controls.maxPolarAngle = Math.PI;
+            viewer.controls.minAzimuthAngle = -Infinity;
+            viewer.controls.maxAzimuthAngle = Infinity;
+
             viewer.controls.update();
 
             // === 🎥 导演模式增强：实时参数面板 ===
@@ -157,7 +169,7 @@ async function init() {
                 border-radius: 8px; border: 1px solid #333; pointer-events: auto;
                 user-select: none; min-width: 300px; backdrop-filter: blur(5px);
             `;
-            
+
             // Added controls section
             debugPanel.innerHTML = `
                 <div style="font-weight:bold; color:#fff; margin-bottom:10px; border-bottom:1px solid #555; padding-bottom:5px;">DIRECTOR MODE</div>
@@ -177,6 +189,23 @@ async function init() {
                     <input type="range" id="focus-slider" min="0" max="1" step="0.05" style="width: 100%; cursor: pointer;">
                 </div>
 
+                <div style="margin-bottom: 5px; border-top:1px dashed #444; padding-top:5px; font-size:11px; color:#888;">MODEL ROTATION</div>
+                <div style="margin-bottom: 5px; display:flex; align-items:center;">
+                    <span style="width:20px; color:#f55">X</span> <input type="range" id="rot-x" min="0" max="6.28" step="0.1" style="flex:1;">
+                </div>
+                <div style="margin-bottom: 5px; display:flex; align-items:center;">
+                    <span style="width:20px; color:#5f5">Y</span> <input type="range" id="rot-y" min="0" max="6.28" step="0.1" style="flex:1;">
+                </div>
+                <div style="margin-bottom: 12px; display:flex; align-items:center;">
+                    <span style="width:20px; color:#55f">Z</span> <input type="range" id="rot-z" min="0" max="6.28" step="0.1" style="flex:1;">
+                </div>
+
+                <div style="margin-bottom: 12px; display:flex; gap:5px;">
+                    <button id="btn-flip-h" style="flex:1; background:#444; color:#ddd; border:1px solid #666; cursor:pointer; font-size:11px; padding:4px;">FLIP HORZ</button>
+                    <button id="btn-flip-v" style="flex:1; background:#444; color:#ddd; border:1px solid #666; cursor:pointer; font-size:11px; padding:4px;">FLIP VERT</button>
+                    <button id="btn-reset-cam" style="flex:1; background:#664; color:#fff; border:1px solid #886; cursor:pointer; font-size:11px; padding:4px;">RESET CAM</button>
+                </div>
+
                 <div style="margin-top: 15px; display:flex; gap:10px;">
                     <button id="save-config-btn" style="flex:1; background: #28a745; color: white; border: none; padding: 8px; border-radius: 4px; cursor: pointer; font-family: inherit; font-weight:bold;">SAVE CONFIG</button>
                 </div>
@@ -190,12 +219,36 @@ async function init() {
             const fovSlider = document.getElementById('fov-slider');
             const parallaxSlider = document.getElementById('parallax-slider');
             const focusSlider = document.getElementById('focus-slider');
+            const rotX = document.getElementById('rot-x');
+            const rotY = document.getElementById('rot-y');
+            const rotZ = document.getElementById('rot-z');
 
             fovSlider.value = MODEL_CONFIG.cameraFOV;
             parallaxSlider.value = MODEL_CONFIG.parallaxPower;
             focusSlider.value = MODEL_CONFIG.focusAperture;
 
+            // Set initial rotation values from config
+            rotX.value = MODEL_CONFIG.modelRotation.x;
+            rotY.value = MODEL_CONFIG.modelRotation.y;
+            rotZ.value = MODEL_CONFIG.modelRotation.z;
+
             // Event Listeners
+            const updateModelRot = () => {
+                MODEL_CONFIG.modelRotation.x = parseFloat(rotX.value);
+                MODEL_CONFIG.modelRotation.y = parseFloat(rotY.value);
+                MODEL_CONFIG.modelRotation.z = parseFloat(rotZ.value);
+                if (viewer.splatMesh) {
+                    viewer.splatMesh.rotation.set(
+                        MODEL_CONFIG.modelRotation.x,
+                        MODEL_CONFIG.modelRotation.y,
+                        MODEL_CONFIG.modelRotation.z
+                    );
+                }
+            };
+            rotX.addEventListener('input', updateModelRot);
+            rotY.addEventListener('input', updateModelRot);
+            rotZ.addEventListener('input', updateModelRot);
+
             fovSlider.addEventListener('input', (e) => {
                 const val = parseFloat(e.target.value);
                 MODEL_CONFIG.cameraFOV = val;
@@ -217,16 +270,41 @@ async function init() {
                 document.getElementById('val-focus').innerText = val;
             });
 
+            // Button Listeners
+            document.getElementById('btn-flip-h').addEventListener('click', () => {
+                // Orbit 180 deg around Y
+                const currentPos = viewer.camera.position.clone().sub(viewer.controls.target);
+                currentPos.applyAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
+                viewer.camera.position.copy(viewer.controls.target).add(currentPos);
+                viewer.camera.lookAt(viewer.controls.target);
+            });
+
+            document.getElementById('btn-flip-v').addEventListener('click', () => {
+                // Invert Up Vector
+                viewer.camera.up.y = viewer.camera.up.y > 0 ? -1 : 1;
+                // Need to re-orient camera
+                viewer.camera.lookAt(viewer.controls.target);
+            });
+
+            document.getElementById('btn-reset-cam').addEventListener('click', () => {
+                viewer.camera.up.set(0, 1, 0);
+                viewer.controls.reset();
+                // Re-apply current config pos
+                viewer.camera.position.set(MODEL_CONFIG.cameraPos.x, MODEL_CONFIG.cameraPos.y, MODEL_CONFIG.cameraPos.z);
+                viewer.controls.target.set(MODEL_CONFIG.cameraTarget.x, MODEL_CONFIG.cameraTarget.y, MODEL_CONFIG.cameraTarget.z);
+                viewer.camera.lookAt(viewer.controls.target);
+            });
+
             // Init Save Button
             const saveBtn = document.getElementById('save-config-btn');
             const saveStatus = document.getElementById('save-status');
-            
+
             saveBtn.addEventListener('click', async () => {
                 if (!wpId) return;
                 saveBtn.disabled = true;
                 saveBtn.style.opacity = "0.5";
                 saveStatus.innerText = "Saving to database...";
-                
+
                 try {
                     // Enhanced payload to store full camera state AND effects
                     const camState = {
@@ -234,12 +312,13 @@ async function init() {
                         position: viewer.camera.position,
                         target: viewer.controls.target,
                         parallaxPower: MODEL_CONFIG.parallaxPower,
-                        focusAperture: MODEL_CONFIG.focusAperture
+                        focusAperture: MODEL_CONFIG.focusAperture,
+                        modelRotation: MODEL_CONFIG.modelRotation
                     };
 
                     const payload = {
                         wallpaper_id: wpId,
-                        user: 'default', 
+                        user: 'default',
                         fov: MODEL_CONFIG.cameraFOV,
                         cam_matrix: JSON.stringify(camState)
                     };
@@ -274,7 +353,7 @@ async function init() {
             const updateDebug = () => {
                 if (!debugContent) return;
                 const p = viewer.camera.position;
-                
+
                 // Format helper
                 const f = (v) => v.toFixed(2);
 
@@ -320,16 +399,50 @@ async function init() {
 
 function applyParallax(viewer) {
     const p = MODEL_CONFIG.parallaxPower;
-    state.camX += (-state.mouseX * p - state.camX) * 0.05;
-    state.camY += (-state.mouseY * p - state.camY) * 0.05;
 
-    const camera = viewer.camera;
-    const base = MODEL_CONFIG.cameraPos;
-    const target = MODEL_CONFIG.cameraTarget;
+    // 缓动计算
+    state.camX += (state.mouseX - state.camX) * 0.08;
+    state.camY += (state.mouseY - state.camY) * 0.08;
 
-    camera.position.x = base.x + state.camX;
-    camera.position.y = base.y + state.camY;
-    camera.lookAt(new THREE.Vector3(target.x, target.y, target.z));
+    const basePos = new THREE.Vector3(MODEL_CONFIG.cameraPos.x, MODEL_CONFIG.cameraPos.y, MODEL_CONFIG.cameraPos.z);
+    const target = new THREE.Vector3(MODEL_CONFIG.cameraTarget.x, MODEL_CONFIG.cameraTarget.y, MODEL_CONFIG.cameraTarget.z);
+
+    // 1. 计算视距
+    const viewVector = new THREE.Vector3().subVectors(basePos, target);
+    const distance = viewVector.length();
+
+    // 2. 物理位移幅度 (Physical Shift)
+    // 回归理性：0.25 倍视距。
+    // 就像人的双眼视差一样，不需要移动几米，只需要几厘米就能产生强烈的立体感。
+    const maxOffset = distance * 1.5 * p;
+
+    // 3. 局部坐标轴
+    const forward = viewVector.clone().normalize();
+    const worldUp = new THREE.Vector3(0, 1, 0);
+    if (Math.abs(forward.y) > 0.99) worldUp.set(0, 0, 1);
+
+    const right = new THREE.Vector3().crossVectors(worldUp, forward).normalize();
+    const up = new THREE.Vector3().crossVectors(forward, right).normalize();
+
+    // 4. 计算相机位移 (Camera Offset)
+    // 保持"拉扯/反向"逻辑：Mouse Right -> Cam Left
+    const camOffset = new THREE.Vector3()
+        .addScaledVector(right, -state.camX * maxOffset)
+        .addScaledVector(up, -state.camY * maxOffset);
+
+    // 5. 关键：纯平移 (Pure Strafe)
+    // 让注视点(Target)完全跟随相机移动。
+    // 这意味着相机在移动过程中，旋转角度保持不变（不转头）。
+    // 结果：纯粹的透视位移。前景跑得快，背景跑得慢。视差最大化。
+    const dynamicTarget = target.clone().add(camOffset);
+
+    // 6. 应用更新
+    viewer.camera.position.copy(basePos).add(camOffset);
+    viewer.camera.lookAt(dynamicTarget);
+
+    if (viewer.splatMesh) {
+        viewer.splatMesh.rotation.set(MODEL_CONFIG.modelRotation.x, MODEL_CONFIG.modelRotation.y, MODEL_CONFIG.modelRotation.z);
+    }
 
     viewer.update();
 }
