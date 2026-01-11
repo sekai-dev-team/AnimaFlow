@@ -1,0 +1,15 @@
+services:
+  animaflow:
+    ports:
+      - "8888:8888"
+    environment:
+      - DEBUG=False
+      - PROJECT_NAME=AnimaFlow
+    restart: always
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]

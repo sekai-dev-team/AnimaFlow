@@ -1,0 +1,15 @@
+services:
+  animaflow:
+    ports:
+      - "8888:8888"
+    environment:
+      - DEBUG=True
+      - PROJECT_NAME=AnimaFlow-Dev
+    volumes:
+      # Bind mount source code for hot reloading
+      - ../src:/app/src
+      - ../sharp:/app/sharp
+      - ../static:/app/static
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8888 --reload
+    # On Windows/Mac (Docker Desktop), GPU support is handled differently or often not needed for simple dev checks.
+    # If you need GPU in dev on Windows with WSL2, ensure you have nvidia-docker functionality.

@@ -27,26 +27,24 @@ wheels/
 .installed.cfg
 *.egg
 MANIFEST
+# Environment
 .env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
+.env.*
+!.env.example
 
-# Model Weights (Large files)
-*.pt
-*.pth
-*.ckpt
-*.safetensors
-*.onnx
+# Local Data
+data/db/*.sqlite
+data/db/*.sqlite-journal
+data/uploads/*
+!data/uploads/.gitkeep
+data/generated/*
+!data/generated/.gitkeep
 
-# 3D Assets (Optional: if you want to keep them out of git due to size)
-*.ply
-*.obj
-*.glb
-*.gltf
+# Sharp model data
+sharp/data/model/*
+!sharp/data/model/.gitkeep
+sharp/data/2d-imgs/*
+!sharp/data/2d-imgs/.gitkeep
 
 # OS Files
 .DS_Store

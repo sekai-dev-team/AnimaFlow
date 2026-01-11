@@ -3,20 +3,16 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
+      args:
+        INSTALL_ML: ${INSTALL_ML:-true}
     image: animaflow:latest
     container_name: animaflow
-    ports:
-      - "8888:8888"
     volumes:
-      - ./data/animaflow/model:/app/sharp/data/model
-      - ./data/animaflow/ply:/app/data/generated
-      - ./data/animaflow/2d-imgs:/app/data/uploads
-      - ./data/animaflow/db:/app/data/db
-    restart: unless-stopped
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
+      # Data persistence volumes
+      - ../data/db:/app/data/db
+      - ../data/uploads:/app/data/uploads
+      - ../data/generated:/app/data/generated
+      # Model weights (if you want to update them without rebuild)
+      - ../sharp/data/model:/app/sharp/data/model
+    env_file:
+      - .env
