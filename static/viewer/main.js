@@ -127,11 +127,15 @@ async function init() {
         'initialCameraLookAt': [MODEL_CONFIG.cameraTarget.x, MODEL_CONFIG.cameraTarget.y, MODEL_CONFIG.cameraTarget.z],
         'selfDrivenMode': false,
         'useBuiltInControls': SETUP_MODE, // Enable orbit controls in Director Mode
-        'dynamicScene': true, // 💎 关键修复：告诉 Viewer 模型本身会动，强制每帧重排 Splat，防止画面破碎
-        'antialiased': true,  // 💎 画质提升：开启抗锯齿
+        'dynamicScene': false, // 🛑 性能优化：关闭强制重排，大幅降低 GPU 占用
+        'antialiased': false,  // 🛑 性能优化：关闭抗锯齿，减少显存带宽压力
+        'splatAlphaRemovalThreshold': 5, // 🛑 性能优化：剔除几乎透明的噪点 (减少填充率消耗)
         'sharedMemoryForWorkers': isSharedMemoryAvailable, // 🛡️ 核心修复：根据环境自动降级
         'camera': new THREE.PerspectiveCamera(MODEL_CONFIG.cameraFOV, window.innerWidth / window.innerHeight, 0.1, 2000)
     });
+
+    // 🛑 性能优化：强制 1.0 像素比，避免在 4K/2K 屏幕下渲染分辨率过高导致掉帧
+    viewer.renderer.setPixelRatio(1);
 
     const plyPath = await getPlyPath();
     console.log("Loading PLY:", plyPath);
@@ -406,8 +410,14 @@ function applyParallax(viewer) {
     const p = MODEL_CONFIG.parallaxPower;
     
     // 缓动计算
-    state.camX += (state.mouseX - state.camX) * 0.08;
-    state.camY += (state.mouseY - state.camY) * 0.08;
+    const dx = (state.mouseX - state.camX) * 0.08;
+    const dy = (state.mouseY - state.camY) * 0.08;
+
+    // 💤 性能优化：如果鼠标静止且相机已稳定，则跳过重绘 (大幅降低待机 GPU 占用)
+    if (Math.abs(dx) < 0.00001 && Math.abs(dy) < 0.00001) return;
+
+    state.camX += dx;
+    state.camY += dy;
 
     const basePos = new THREE.Vector3(MODEL_CONFIG.cameraPos.x, MODEL_CONFIG.cameraPos.y, MODEL_CONFIG.cameraPos.z);
     const target = new THREE.Vector3(MODEL_CONFIG.cameraTarget.x, MODEL_CONFIG.cameraTarget.y, MODEL_CONFIG.cameraTarget.z);
