@@ -116,6 +116,10 @@ async function init() {
     document.body.appendChild(vignette);
 
     // 2. 初始化 Viewer
+    // 🔍 自动检测环境兼容性 (修复 Wallpaper Engine 卡死问题)
+    const isSharedMemoryAvailable = typeof SharedArrayBuffer !== 'undefined' && window.crossOriginIsolated;
+    console.log(`[AnimaFlow] Environment Check - SharedArrayBuffer: ${typeof SharedArrayBuffer}, CrossOriginIsolated: ${window.crossOriginIsolated}`);
+    
     const viewer = new Viewer({
         'rootElement': container,
         'cameraUp': [0, 1, 0],
@@ -125,6 +129,7 @@ async function init() {
         'useBuiltInControls': SETUP_MODE, // Enable orbit controls in Director Mode
         'dynamicScene': true, // 💎 关键修复：告诉 Viewer 模型本身会动，强制每帧重排 Splat，防止画面破碎
         'antialiased': true,  // 💎 画质提升：开启抗锯齿
+        'sharedMemoryForWorkers': isSharedMemoryAvailable, // 🛡️ 核心修复：根据环境自动降级
         'camera': new THREE.PerspectiveCamera(MODEL_CONFIG.cameraFOV, window.innerWidth / window.innerHeight, 0.1, 2000)
     });
 
